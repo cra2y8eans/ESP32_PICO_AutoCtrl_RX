@@ -219,8 +219,6 @@ void airCraftControl() {
       // 自稳模式
       roll_balance();
       pitch_balance();
-      Serial.printf("测试x: %.1f\n", MaitainedAngle_X);
-      Serial.printf("测试y: %.1f\n", MaitainedAngle_Y);
       if ((-4 < MaitainedAngle_X < 4) && (-4 < MaitainedAngle_Y < 4)) {
         ail_mid_angle     = map(pad.joystick_mid_val[1], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
         ele_mid_angle     = map(pad.joystick_mid_val[0], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
