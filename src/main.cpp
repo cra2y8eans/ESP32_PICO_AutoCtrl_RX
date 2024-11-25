@@ -2,9 +2,20 @@
 
 ESP32_PICO 手抛飞机自稳接收机
 
-- 版本：1.0.1    分支develop，作为PID已经调整好的版本。
-                  * 固定PID、转向系数
-                  * 启用襟翼
+- 版本：1.0.0    1、明确需要接收和回传的数据
+                   * 接收：自稳开启flag，摇杆中值，油门、升降舵、副翼的ADC值，X轴、Y轴的PID参数，转向系数等。其中PID及转向系数可在调参完成后写死。
+                   * 发送：电池电量ADC值，X、Y轴角度和角速度，舵机执行的角度等。为减轻MCU负担，可在调参完毕后只回传电量这一项数据。
+                 2、采用switch case方法，用自稳flag作为判断条件，以便在手动控制和自稳混控中切换。
+                 3、舵机所需执行角度计算方法：
+                   * 计算出摇杆实际拨动的值：摇杆当前读数 - 摇杆中值 = 实际拨动的值。差值有正负，用以区分拨动的方向。此中值为开机时读取到的值。
+                   * 确定角度系数为120 ÷ 256 = 0.46875，然后将上面求得的实际拨动的值 * 角度系数 = 预期平衡角度
+                   * 使用预期平衡角度 - 当前飞机角度 = 角度差，带入PID计算公示为：比例项P*角度差 + 积分项I*（角度差+=角度差）+ 微分项D*角速度 = 控制所需的PWM值。
+                   * 因为舵机最大角度设定为120°，所以PWM值换算成角度的范围只能在-60°到60°之间。
+                   * 将摇杆ADC中值换算成角度，并以这个角度为舵机角度中值，在角度中值的基础上加减前面计算出来的角度，得到舵机最终需要执行的角度。
+                 4、PID调试
+                   * 因为计算公式的问题，需要将Y轴的PID值都调到负数才能匹配飞机姿态和舵面纠正：P = -4.0, I = -0.01, D = -0.2;
+                 5、接收襟翼开关数据，只有手动模式下才能打开襟翼。
+                 6、使用git管理代码
 
 ************************************************************************************************************************************************************/
 
@@ -24,10 +35,14 @@ esp_now_peer_info_t peerInfo;
 uint8_t padAddress[] = { 0x08, 0xa6, 0xf7, 0x17, 0x6d, 0x84 }; // ESP32_薄
 // uint8_t padAddress[] = { 0x2c, 0xbc, 0xbb, 0x00, 0x52, 0xd4 }; // ESP32_厚
 
+// 存储接收到的数据
 struct Pad {
-  int button_flag[2]      = {}; // 0、自稳开关     1、襟翼开关
-  int joystick_mid_val[2] = {}; // 0、副翼中值     1、升降舵中值
-  int joystick_ADC[3]     = {}; // 0、油门         1、副翼；       2、升降舵
+  int   button_flag[2]      = {}; // 0、自稳开关         1、襟翼开关
+  int   joystick_mid_val[2] = {}; // 0、副翼中值         1、升降舵中值
+  int   joystick_ADC[3]     = {}; // 0、油门             1、副翼；       2、升降舵
+  float x_pid_data[3]       = {}; // 0、X轴比例          1、X轴积分；    2、X轴微分
+  float y_pid_data[3]       = {}; // 0、Y轴比例          1、Y轴积分；    2、Y轴微分
+  float coe[1]              = {}; // 0、舵机角度换算系数
 };
 Pad pad;
 
@@ -63,8 +78,8 @@ MPU6050 mpu6050(Wire);
 #define SERVO_FREQ_MIN 500    // 舵机最小频率
 #define SERVO_FREQ_MAX 2500   // 舵机最大频率
 #define SERVO_ANGLE_RANGE 120 // 舵机角度范围
-#define TURN_COE 0.46875      // 摇杆系数
 
+// int SERVO_ANGLE_RANGE = 120; // 舵机角度范围
 int pitch_servo_angle, roll_servo_angle;
 
 // ESP32Servo库
@@ -92,9 +107,6 @@ float
     integral_Y,       // 滚转偏差积分
     deviation_X,      // 俯仰偏差角度
     deviation_Y;      // 滚转偏差角度
-
-float Xp = -4.0, Xi = -0.01, Xd = -0.2,
-      Yp = -4.0, Yi = -0.01, Yd = -0.2;
 
 /*------------------------------------------------- 滤波 -------------------------------------------------*/
 
@@ -170,13 +182,13 @@ int pitch_balance() {
   GetAttitudeData(); // 获取姿态信息
   int pitch_servo_pwm;
   int angle_pitch;
-  MaitainedAngle_X = (pad.joystick_ADC[2] - pad.joystick_mid_val[0]) * TURN_COE;                    // 动态维持的角度 = （升降舵ADC - 摇杆中值） * 角度系数
-  deviation_X      = angle_X - MaitainedAngle_X;                                                    // 偏差角度 = 当前角度 - 动态维持的角度（遥控器发送过来的角度）
-  integral_X += deviation_X;                                                                        // 积分累计
-  integral_X      = constrain(integral_X, DEVIATION_RANGE_NEG, DEVIATION_RANGE_POS);                // 限制积分上限
-  pitch_servo_pwm = Xp * deviation_X + Xi * integral_X + Xd * gyro_X;                               // 引入PID参数，计算所需的pmw值
-  pitch_servo_pwm = constrain(pitch_servo_pwm, -128, 127);                                          // 限制pwm值的范围
-  angle_pitch     = map(pitch_servo_pwm, -128, 127, SERVO_ANGLE_RANGE / -2, SERVO_ANGLE_RANGE / 2); // 将PWM换算成角度
+  MaitainedAngle_X = (pad.joystick_ADC[2] - pad.joystick_mid_val[0]) * pad.coe[0];                                 // 动态维持的角度 = （升降舵ADC - 摇杆中值） * 角度系数
+  deviation_X      = angle_X - MaitainedAngle_X;                                                                   // 偏差角度 = 当前角度 - 动态维持的角度（遥控器发送过来的角度）
+  integral_X += deviation_X;                                                                                       // 积分累计
+  integral_X      = constrain(integral_X, DEVIATION_RANGE_NEG, DEVIATION_RANGE_POS);                               // 限制积分上限
+  pitch_servo_pwm = pad.x_pid_data[0] * deviation_X + pad.x_pid_data[1] * integral_X + pad.x_pid_data[2] * gyro_X; // 引入PID参数，计算所需的pmw值
+  pitch_servo_pwm = constrain(pitch_servo_pwm, -128, 127);                                                         // 限制pwm值的范围
+  angle_pitch     = map(pitch_servo_pwm, -128, 127, SERVO_ANGLE_RANGE / -2, SERVO_ANGLE_RANGE / 2);                // 将PWM换算成角度
 
   return angle_pitch;
 }
@@ -186,13 +198,13 @@ int roll_balance() {
   GetAttitudeData();
   int roll_servo_pwm;
   int angle_roll;
-  MaitainedAngle_Y = (pad.joystick_ADC[1] - pad.joystick_mid_val[1]) * TURN_COE;                  // 动态维持的角度 = （副翼ADC - 摇杆中值） * 角度系数
-  deviation_Y      = angle_Y - MaitainedAngle_Y;                                                  // 偏差角度 = 当前角度 - 动态维持的角度（遥控器发送过来的角度）
-  integral_Y += deviation_Y;                                                                      // 积分累计
-  integral_Y     = constrain(integral_Y, DEVIATION_RANGE_NEG, DEVIATION_RANGE_POS);               // 限制积分上限
-  roll_servo_pwm = Yp * deviation_Y + Yi * integral_Y + Yd * gyro_Y;                              // 计算所需的pmw值
-  roll_servo_pwm = constrain(roll_servo_pwm, -128, 127);                                          // 限制pwm值的范围
-  angle_roll     = map(roll_servo_pwm, -128, 127, SERVO_ANGLE_RANGE / -2, SERVO_ANGLE_RANGE / 2); // 将PWM换算成角度
+  MaitainedAngle_Y = (pad.joystick_ADC[1] - pad.joystick_mid_val[1]) * pad.coe[0];                                // 动态维持的角度 = （副翼ADC - 摇杆中值） * 角度系数
+  deviation_Y      = angle_Y - MaitainedAngle_Y;                                                                  // 偏差角度 = 当前角度 - 动态维持的角度（遥控器发送过来的角度）
+  integral_Y += deviation_Y;                                                                                      // 积分累计
+  integral_Y     = constrain(integral_Y, DEVIATION_RANGE_NEG, DEVIATION_RANGE_POS);                               // 限制积分上限
+  roll_servo_pwm = pad.y_pid_data[0] * deviation_Y + pad.y_pid_data[1] * integral_Y + pad.y_pid_data[2] * gyro_Y; // 计算所需的pmw值
+  roll_servo_pwm = constrain(roll_servo_pwm, -128, 127);                                                          // 限制pwm值的范围
+  angle_roll     = map(roll_servo_pwm, -128, 127, SERVO_ANGLE_RANGE / -2, SERVO_ANGLE_RANGE / 2);                 // 将PWM换算成角度
 
   return angle_roll;
 }
@@ -206,8 +218,9 @@ void airCraftControl() {
       // 手动模式
       roll_servo_angle  = map(pad.joystick_ADC[1], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
       pitch_servo_angle = map(pad.joystick_ADC[2], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
+      /*
       // 襟翼必须在自稳模式关闭的前提下才能开启
-      if (pad.button_flag[1] == 1) {
+      if (pad.button_flag[0] == 0 && pad.button_flag[1] == 1) {
         Aileron_L.write(SERVO_ANGLE_RANGE - roll_servo_angle);
         Aileron_R.write(roll_servo_angle);
       } else {
@@ -215,6 +228,11 @@ void airCraftControl() {
         Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
       }
       ledcWrite(MOTOR_CHANNEL, pad.joystick_ADC[0]);
+      Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
+      */
+      ledcWrite(MOTOR_CHANNEL, pad.joystick_ADC[0]);
+      Aileron_L.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+      Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
       Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
       break;
     case 1:
