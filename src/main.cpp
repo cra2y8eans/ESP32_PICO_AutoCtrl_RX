@@ -217,14 +217,24 @@ void airCraftControl() {
       break;
     case 1:
       // 自稳模式
-      ail_mid_angle     = map(pad.joystick_mid_val[1], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
-      ele_mid_angle     = map(pad.joystick_mid_val[0], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
-      roll_servo_angle  = ail_mid_angle + roll_balance();
-      pitch_servo_angle = ele_mid_angle + pitch_balance();
-      ledcWrite(MOTOR_CHANNEL, pad.joystick_ADC[0]);
-      Aileron_L.write(SERVO_ANGLE_RANGE - roll_servo_angle);
-      Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
-      Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
+      roll_balance();
+      pitch_balance();
+      if (MaitainedAngle_X == 0 && MaitainedAngle_Y == 0) {
+        ail_mid_angle     = map(pad.joystick_mid_val[1], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
+        ele_mid_angle     = map(pad.joystick_mid_val[0], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
+        roll_servo_angle  = ail_mid_angle + roll_balance();
+        pitch_servo_angle = ele_mid_angle + pitch_balance();
+        ledcWrite(MOTOR_CHANNEL, pad.joystick_ADC[0]);
+        Aileron_L.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+        Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+        Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
+      } else {
+        Aileron_L.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+        Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+        Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
+        ledcWrite(MOTOR_CHANNEL, pad.joystick_ADC[0]);
+      }
+
       break;
     default:
       break;
