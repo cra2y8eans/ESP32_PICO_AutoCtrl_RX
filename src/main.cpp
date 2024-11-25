@@ -2,20 +2,7 @@
 
 ESP32_PICO 手抛飞机自稳接收机
 
-- 版本：1.0.0    1、明确需要接收和回传的数据
-                   * 接收：自稳开启flag，摇杆中值，油门、升降舵、副翼的ADC值，X轴、Y轴的PID参数，转向系数等。其中PID及转向系数可在调参完成后写死。
-                   * 发送：电池电量ADC值，X、Y轴角度和角速度，舵机执行的角度等。为减轻MCU负担，可在调参完毕后只回传电量这一项数据。
-                 2、采用switch case方法，用自稳flag作为判断条件，以便在手动控制和自稳混控中切换。
-                 3、舵机所需执行角度计算方法：
-                   * 计算出摇杆实际拨动的值：摇杆当前读数 - 摇杆中值 = 实际拨动的值。差值有正负，用以区分拨动的方向。此中值为开机时读取到的值。
-                   * 确定角度系数为120 ÷ 256 = 0.46875，然后将上面求得的实际拨动的值 * 角度系数 = 预期平衡角度
-                   * 使用预期平衡角度 - 当前飞机角度 = 角度差，带入PID计算公示为：比例项P*角度差 + 积分项I*（角度差+=角度差）+ 微分项D*角速度 = 控制所需的PWM值。
-                   * 因为舵机最大角度设定为120°，所以PWM值换算成角度的范围只能在-60°到60°之间。
-                   * 将摇杆ADC中值换算成角度，并以这个角度为舵机角度中值，在角度中值的基础上加减前面计算出来的角度，得到舵机最终需要执行的角度。
-                 4、PID调试
-                   * 因为计算公式的问题，需要将Y轴的PID值都调到负数才能匹配飞机姿态和舵面纠正：P = -4.0, I = -0.01, D = -0.2;
-                 5、接收襟翼开关数据，只有手动模式下才能打开襟翼。
-                 6、使用git管理代码
+- 版本：develop_auto_ctrl   重新规范自稳介入时机。当摇杆拨动，也就是平衡角度不为0时，自稳关闭；当角度为0时，自稳介入。
 
 ************************************************************************************************************************************************************/
 
@@ -241,10 +228,20 @@ void airCraftControl() {
       ele_mid_angle     = map(pad.joystick_mid_val[0], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
       roll_servo_angle  = ail_mid_angle + roll_balance();
       pitch_servo_angle = ele_mid_angle + pitch_balance();
-      ledcWrite(MOTOR_CHANNEL, pad.joystick_ADC[0]);
-      Aileron_L.write(SERVO_ANGLE_RANGE - roll_servo_angle);
-      Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
-      Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
+      Serial.println("debug test");
+
+
+      if (roll_balance() == 0 && pitch_balance() == 0) {
+        ledcWrite(MOTOR_CHANNEL, pad.joystick_ADC[0]);
+        Aileron_L.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+        Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+        Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
+      } else {
+        ledcWrite(MOTOR_CHANNEL, pad.joystick_ADC[0]);
+        Aileron_L.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+        Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+        Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
+      }
       break;
     default:
       break;
