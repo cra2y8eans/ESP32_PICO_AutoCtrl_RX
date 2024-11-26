@@ -199,6 +199,8 @@ int roll_balance() {
 void airCraftControl() {
   if (esp_connected == true) {
     int ail_mid_angle, ele_mid_angle;
+    int x_adc_difference = pad.joystick_ADC[2] - pad.joystick_mid_val[1];
+    int y_adc_difference = pad.joystick_ADC[1] - pad.joystick_mid_val[0];
     switch (pad.button_flag[0]) {
     case 0:
       // 手动模式
@@ -219,7 +221,7 @@ void airCraftControl() {
       // 自稳模式
       // roll_balance();
       // pitch_balance();
-      if (-10 < (pad.joystick_ADC[1] - pad.joystick_mid_val[0]) < 10 && -10 < (pad.joystick_ADC[2] - pad.joystick_mid_val[1]) < 10) {
+      if (-10 < x_adc_difference < 10 && -10 < y_adc_difference < 10) {
         ail_mid_angle     = map(pad.joystick_mid_val[1], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
         ele_mid_angle     = map(pad.joystick_mid_val[0], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
         roll_servo_angle  = ail_mid_angle + roll_balance();
