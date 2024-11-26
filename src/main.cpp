@@ -168,8 +168,8 @@ int pitch_balance() {
   GetAttitudeData(); // 获取姿态信息
   int pitch_servo_pwm;
   int angle_pitch;
-  MaitainedAngle_X = (pad.joystick_ADC[2] - pad.joystick_mid_val[0]) * TURN_COE;                    // 动态维持的角度 = （升降舵ADC - 摇杆中值） * 角度系数
-  deviation_X      = angle_X - MaitainedAngle_X;                                                    // 偏差角度 = 当前角度 - 动态维持的角度（遥控器发送过来的角度）
+  // MaitainedAngle_X = (pad.joystick_ADC[2] - pad.joystick_mid_val[0]) * TURN_COE;                    // 动态维持的角度 = （升降舵ADC - 摇杆中值） * 角度系数
+  deviation_X = angle_X - 0;                                                                        // 偏差角度 = 当前角度 - 动态维持的角度（遥控器发送过来的角度）
   integral_X += deviation_X;                                                                        // 积分累计
   integral_X      = constrain(integral_X, DEVIATION_RANGE_NEG, DEVIATION_RANGE_POS);                // 限制积分上限
   pitch_servo_pwm = Xp * deviation_X + Xi * integral_X + Xd * gyro_X;                               // 引入PID参数，计算所需的pmw值
@@ -184,8 +184,8 @@ int roll_balance() {
   GetAttitudeData();
   int roll_servo_pwm;
   int angle_roll;
-  MaitainedAngle_Y = (pad.joystick_ADC[1] - pad.joystick_mid_val[1]) * TURN_COE;                  // 动态维持的角度 = （副翼ADC - 摇杆中值） * 角度系数
-  deviation_Y      = angle_Y - MaitainedAngle_Y;                                                  // 偏差角度 = 当前角度 - 动态维持的角度（遥控器发送过来的角度）
+  // MaitainedAngle_Y = (pad.joystick_ADC[1] - pad.joystick_mid_val[1]) * TURN_COE;                  // 动态维持的角度 = （副翼ADC - 摇杆中值） * 角度系数
+  deviation_Y = angle_Y - 0;                                                                      // 偏差角度 = 当前角度 - 动态维持的角度（遥控器发送过来的角度）
   integral_Y += deviation_Y;                                                                      // 积分累计
   integral_Y     = constrain(integral_Y, DEVIATION_RANGE_NEG, DEVIATION_RANGE_POS);               // 限制积分上限
   roll_servo_pwm = Yp * deviation_Y + Yi * integral_Y + Yd * gyro_Y;                              // 计算所需的pmw值
@@ -217,9 +217,9 @@ void airCraftControl() {
       break;
     case 1:
       // 自稳模式
-      roll_balance();
-      pitch_balance();
-      if ((-4 < MaitainedAngle_X < 4) && (-4 < MaitainedAngle_Y < 4)) {
+      // roll_balance();
+      // pitch_balance();
+      if ((-10 < pad.joystick_ADC[1] < 10) && (-10 < pad.joystick_ADC[2] < 10)) {
         ail_mid_angle     = map(pad.joystick_mid_val[1], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
         ele_mid_angle     = map(pad.joystick_mid_val[0], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
         roll_servo_angle  = ail_mid_angle + roll_balance();
@@ -229,6 +229,8 @@ void airCraftControl() {
         Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
         Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
       } else {
+        roll_servo_angle  = map(pad.joystick_ADC[1], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
+        pitch_servo_angle = map(pad.joystick_ADC[2], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
         Aileron_L.write(SERVO_ANGLE_RANGE - roll_servo_angle);
         Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
         Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
