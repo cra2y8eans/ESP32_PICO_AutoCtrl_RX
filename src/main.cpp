@@ -5,6 +5,7 @@ branch develop:
                 采用摇杆区域限定的判断操控方式，即：监测摇杆是否拨动，只有在未拨动的时候才启用自稳。
                 取消之前使用转向系数计算平衡角度的算法，采用develop_auto_ctrl分支的自稳算法，直接将平衡角度写死为0；
                 暂不开启襟翼模式，增加飞机操控判断条件，只有在PID参数、步长调节关闭的情况下才能操控飞机；
+                关闭X轴（升降舵pitch）的自稳，只使用Y轴（副翼roll）；
 
 本版本用于飞行测试，确定PID最终数据。
 
@@ -227,13 +228,35 @@ void airCraftControl() {
       Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
       */
       break;
+
+      // case 1:
+      //   // 自稳模式
+      //   if ((x_adc_difference > -10 && x_adc_difference < 10) && (y_adc_difference > -10 && y_adc_difference < 10)) {
+      //     ail_mid_angle     = map(pad.joystick_mid_val[1], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
+      //     ele_mid_angle     = map(pad.joystick_mid_val[0], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
+      //     roll_servo_angle  = ail_mid_angle + roll_balance();
+      //     pitch_servo_angle = ele_mid_angle + pitch_balance();
+      //     ledcWrite(MOTOR_CHANNEL, pad.joystick_cur_val[0]);
+      //     Aileron_L.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+      //     Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+      //     Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
+      //   } else {
+      //     roll_servo_angle  = map(pad.joystick_cur_val[1], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
+      //     pitch_servo_angle = map(pad.joystick_cur_val[2], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
+      //     Aileron_L.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+      //     Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
+      //     Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
+      //     ledcWrite(MOTOR_CHANNEL, pad.joystick_cur_val[0]);
+      //   }
+      //   break;
+
+      // 上面是X Y轴都自稳的，下面只是对x轴进行自稳计算的测试
     case 1:
       // 自稳模式
-      if ((x_adc_difference > -10 && x_adc_difference < 10) && (y_adc_difference > -10 && y_adc_difference < 10)) {
+      if (y_adc_difference > -10 && y_adc_difference < 10) {
         ail_mid_angle     = map(pad.joystick_mid_val[1], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
-        ele_mid_angle     = map(pad.joystick_mid_val[0], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
         roll_servo_angle  = ail_mid_angle + roll_balance();
-        pitch_servo_angle = ele_mid_angle + pitch_balance();
+        pitch_servo_angle = map(pad.joystick_cur_val[2], ADC_MIN, ADC_MAX, ADC_MIN, SERVO_ANGLE_RANGE);
         ledcWrite(MOTOR_CHANNEL, pad.joystick_cur_val[0]);
         Aileron_L.write(SERVO_ANGLE_RANGE - roll_servo_angle);
         Aileron_R.write(SERVO_ANGLE_RANGE - roll_servo_angle);
@@ -246,6 +269,7 @@ void airCraftControl() {
         Elevator.write(SERVO_ANGLE_RANGE - pitch_servo_angle);
         ledcWrite(MOTOR_CHANNEL, pad.joystick_cur_val[0]);
       }
+
       break;
     default:
       break;
@@ -253,9 +277,9 @@ void airCraftControl() {
   } else {
     // 电机停转、飞机盘旋
     ledcWrite(MOTOR_CHANNEL, 0);
-    Elevator.write(120);
-    Aileron_L.write(30);
-    Aileron_R.write(120);
+    Elevator.write(100);
+    Aileron_L.write(100);
+    Aileron_R.write(20);
   }
 }
 
