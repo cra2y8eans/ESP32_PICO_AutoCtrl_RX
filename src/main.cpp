@@ -11,6 +11,7 @@ branch develop:
 
 ************************************************************************************************************************************************************/
 
+#include "batteryReading.hpp"
 #include <Arduino.h>
 #include <ESP32Servo.h>
 #include <MPU6050_tockn.h>
@@ -38,8 +39,8 @@ Pad pad;
 
 // 发回遥控器数据
 struct Aircraft {
-  int   batteryValue[1] = {}; // 0、电池电量ADC值
   int   servo_angle[2]  = {}; // 0、升降舵机角度   1、副翼舵机角度
+  float batteryValue[2] = {}; // 0、电压           1、电量
   float x_data[2]       = {}; // 0、X轴角度        1、X轴角速度
   float y_data[2]       = {}; // 0、Y轴角度        1、Y轴角速度
 };
@@ -106,9 +107,17 @@ float
 
 /*------------------------------------------------- 电量读取 -------------------------------------------------*/
 
-#define BATTERY_PIN 35            // 电量读取引脚
-#define BATTERY_INTERVAL 2000     // 电量检测间隔时间，单位毫秒
+#define BATTERY_PIN 35        // 电量读取引脚
+#define BATTERY_MAX_VALUE 4.2 // 电池最大电量
+#define BATTERY_MIN_VALUE 3.2 // 电池最小电量
+#define BATTERY_INTERVAL 2000 // 电量检测间隔时间，单位毫秒
+#define R1 10000
+#define R2 9900
+#define RESOLUTION 8
+#define AVG 50
 unsigned long previousMillis = 0; // 当前检测时间
+
+BatReading battery;
 
 /*------------------------------------------------- 自定义函数 -------------------------------------------------*/
 
@@ -286,13 +295,15 @@ void airCraftControl() {
 //  数据回传
 void dataSendBack() {
   GetAttitudeData();
-  aircraft.x_data[0]       = angle_X;
-  aircraft.x_data[1]       = gyro_X;
-  aircraft.y_data[0]       = angle_Y;
-  aircraft.y_data[1]       = gyro_Y;
-  aircraft.servo_angle[0]  = pitch_servo_angle;
-  aircraft.servo_angle[1]  = roll_servo_angle;
-  aircraft.batteryValue[0] = limit_avg_filter(BATTERY_PIN);
+  aircraft.x_data[0]      = angle_X;
+  aircraft.x_data[1]      = gyro_X;
+  aircraft.y_data[0]      = angle_Y;
+  aircraft.y_data[1]      = gyro_Y;
+  aircraft.servo_angle[0] = pitch_servo_angle;
+  aircraft.servo_angle[1] = roll_servo_angle;
+  BatReading::Bat batStatus = battery.read(AVG);
+  aircraft.batteryValue[0]  = batStatus.voltage;
+  aircraft.batteryValue[1]  = batStatus.voltsPercentage;
 
   // 发送
   esp_now_send(padAddress, (uint8_t*)&aircraft, sizeof(aircraft));
@@ -354,8 +365,10 @@ void setup() {
   ledcWrite(MOTOR_PIN_R, 0);
 
   //  电池检测初始化
-  analogReadResolution(8);
-  aircraft.batteryValue[0] = analogRead(BATTERY_PIN);
+  // analogReadResolution(8);
+  // aircraft.batteryValue[0] = analogRead(BATTERY_PIN);
+
+  battery.init(BATTERY_PIN, RESOLUTION, R1, R2, BATTERY_MAX_VALUE, BATTERY_MIN_VALUE);
 }
 
 void loop() {
